@@ -29,10 +29,13 @@ type webhook struct {
 }
 
 type backups struct {
-	Name          string        `json:"name"`
-	BucketName    string        `json:"bucket_name"`
-	BackupMetrics backupMetrics `json:"backup_metrics"`
-	Snapshots     []snapshot    `json:"snapshots"`
+	Name            string        `json:"name"`
+	BucketName      string        `json:"bucket_name"`
+	BackupMetrics   backupMetrics `json:"backup_metrics"`
+	Snapshots       []snapshot    `json:"snapshots"`
+	RestoreLocation string        `json:"restore_location"`
+	SnapshotID      string        `json:"snapshot_ID"`
+	RestoredFiles   []string      `json:"restored_files"`
 }
 
 type backupMetrics struct {
@@ -78,6 +81,7 @@ var (
 	tokenSigningKey = os.Getenv("JWT_SECRET")
 	jwtAudience     = os.Getenv("JWT_AUDIENCE")
 	graphQLEndpoint = os.Getenv("GRAPHQL_ENDPOINT")
+	httpListenPort  = os.Getenv("HTTP_LISTEN_PORT")
 
 	// set up the rabbit endpoint
 	amqpURI = "amqp://" + brokerUser + ":" + brokerPass + "@" + brokerAddress + ":" + brokerPort
@@ -145,10 +149,13 @@ func main() {
 	if len(os.Getenv("GRAPHQL_ENDPOINT")) == 0 {
 		log.Fatalln("GRAPHQL_ENDPOINT not set")
 	}
+	if len(os.Getenv("HTTP_LISTEN_PORT")) == 0 {
+		httpListenPort = "3000"
+	}
 
 	// handle the requests
 	http.HandleFunc("/", webhookHandler)
-	http.ListenAndServe(":3000", nil)
+	http.ListenAndServe(":"+httpListenPort, nil)
 
 }
 
@@ -158,70 +165,85 @@ func webhookHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&backupData)
 	if err != nil {
-		log.Printf("error is %s:", err.Error())
+		log.Printf("unable to handle webhook, error is %s:", err.Error())
 	} else {
 		// get backups from the API
 		lagoonAPI, err := api.New(tokenSigningKey, jwtAudience, graphQLEndpoint)
 		if err != nil {
-			log.Printf("error is %s:", err.Error())
+			log.Printf("unable to handle webhook, error is %s:", err.Error())
 			return
-		}
-		// use the name from the webhook to get the environment in the api
-		environment := api.EnvironmentBackups{
-			OpenshiftProjectName: backupData.Name,
-		}
-		envBackups, err := lagoonAPI.GetEnvironmentBackups(environment)
-		if err != nil {
-			log.Printf("error is %s:", err.Error())
-			return
-		}
-		// unmarshal the result into the environment struct
-		var backupsEnv api.Environment
-		json.Unmarshal(envBackups, &backupsEnv)
-		// remove backups that no longer exists from the api
-		for index, backup := range backupsEnv.Backups {
-			// check that the backup in the api is not in the webhook payload
-			if !apiBackupInWebhook(backupData.Snapshots, backup.BackupID) {
-				// if the backup in the api is not in the webhook payload
-				// remove it from the webhook payload data
-				removeSnapshot(backupData.Snapshots, index)
-				delBackup := api.DeleteBackup{
-					BackupID: backup.BackupID,
-				}
-				// now delete it from the api as it no longer exists
-				_, err := lagoonAPI.DeleteBackup(delBackup) // result is always success, or will error
-				if err != nil {
-					log.Printf("error is %s:", err.Error())
-					return
-				}
-				log.Printf("deleted backup %s for %s", backup.BackupID, backupsEnv.OpenshiftProjectName)
-			}
 		}
 
-		// if we get this far, then the payload data from the webhook should only have snapshots that are new or exist in the api
-		for _, snapshotData := range backupData.Snapshots {
-			// we want to check that we match the name to the project/environment properly and capture any prebackuppods too
-			matched, _ := regexp.MatchString("^"+backupData.Name+"-.*-prebackuppod$|^"+backupData.Name+"$", snapshotData.Hostname)
-			if matched {
-				// if the snapshot id is not in already in the api, then we want to add this backup to the webhooks queue
-				// this results in far less messages being sent to the queue as only new snapshots will be added
-				if !backupInEnvironment(backupsEnv, snapshotData.ID) {
-					singleBackup := webhook{
-						Webhooktype: "resticbackup",
-						Event:       "snapshot:finished",
-						UUID:        uuid.New().String(),
-						Body: backups{
-							Name:          backupData.Name,
-							BucketName:    backupData.BucketName,
-							BackupMetrics: backupData.BackupMetrics,
-							Snapshots: []snapshot{
-								snapshotData,
-							},
-						},
+		// handle restores
+		if backupData.RestoreLocation != "" {
+			singleBackup := webhook{
+				Webhooktype: "resticbackup",
+				Event:       "restore:finished",
+				UUID:        uuid.New().String(),
+				Body:        backupData,
+			}
+			addToMessageQueue(singleBackup)
+			// else handle snapshots
+		} else if backupData.Snapshots != nil {
+			// use the name from the webhook to get the environment in the api
+			environment := api.EnvironmentBackups{
+				OpenshiftProjectName: backupData.Name,
+			}
+			envBackups, err := lagoonAPI.GetEnvironmentBackups(environment)
+			if err != nil {
+				log.Printf("unable to get backups from api, error is %s:", err.Error())
+				return
+			}
+			// unmarshal the result into the environment struct
+			var backupsEnv api.Environment
+			json.Unmarshal(envBackups, &backupsEnv)
+			// remove backups that no longer exists from the api
+			for index, backup := range backupsEnv.Backups {
+				// check that the backup in the api is not in the webhook payload
+				if !apiBackupInWebhook(backupData.Snapshots, backup.BackupID) {
+					// if the backup in the api is not in the webhook payload
+					// remove it from the webhook payload data
+					removeSnapshot(backupData.Snapshots, index)
+					delBackup := api.DeleteBackup{
+						BackupID: backup.BackupID,
 					}
-					addToMessageQueue(singleBackup)
+					// now delete it from the api as it no longer exists
+					_, err := lagoonAPI.DeleteBackup(delBackup) // result is always success, or will error
+					if err != nil {
+						log.Printf("unable to delete backup from api, error is %s:", err.Error())
+						return
+					}
+					log.Printf("deleted backup %s for %s", backup.BackupID, backupsEnv.OpenshiftProjectName)
 				}
 			}
+
+			// if we get this far, then the payload data from the webhook should only have snapshots that are new or exist in the api
+			for _, snapshotData := range backupData.Snapshots {
+				// we want to check that we match the name to the project/environment properly and capture any prebackuppods too
+				matched, _ := regexp.MatchString("^"+backupData.Name+"-.*-prebackuppod$|^"+backupData.Name+"$", snapshotData.Hostname)
+				if matched {
+					// if the snapshot id is not in already in the api, then we want to add this backup to the webhooks queue
+					// this results in far less messages being sent to the queue as only new snapshots will be added
+					if !backupInEnvironment(backupsEnv, snapshotData.ID) {
+						singleBackup := webhook{
+							Webhooktype: "resticbackup",
+							Event:       "snapshot:finished",
+							UUID:        uuid.New().String(),
+							Body: backups{
+								Name:          backupData.Name,
+								BucketName:    backupData.BucketName,
+								BackupMetrics: backupData.BackupMetrics,
+								Snapshots: []snapshot{
+									snapshotData,
+								},
+							},
+						}
+						addToMessageQueue(singleBackup)
+					}
+				}
+			}
+		} else {
+			log.Println("unable to handle webhook: %v", backupData)
 		}
 	}
 }
@@ -237,13 +259,17 @@ func addToMessageQueue(message webhook) {
 			ContentType: "text/plain",
 			Body:        []byte(backupMessage),
 		})
-	log.Printf("webhook for %s, ID:%s added to queue", message.Body.Snapshots[0].Hostname, message.Body.Snapshots[0].ID)
+	if message.Body.Snapshots != nil {
+		log.Printf("webhook for %s, snapshotname %s, ID:%s added to queue", message.Webhooktype+":"+message.Event, message.Body.Snapshots[0].Hostname, message.Body.Snapshots[0].ID)
+	} else {
+		log.Printf("webhook for %s, ID:%s added to queue", message.Webhooktype+":"+message.Event, message.Body.SnapshotID)
+	}
 	failOnError(err, "Failed to publish a message")
 }
 
 func failOnError(err error, msg string) {
 	if err != nil {
-		log.Printf("error is %s:", err.Error())
+		log.Printf("rabbit failure, error is %s:", err.Error())
 	}
 }
 
