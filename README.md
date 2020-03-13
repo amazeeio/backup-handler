@@ -15,5 +15,5 @@ GRAPHQL_ENDPOINT="http://localhost:3000/graphql"
 ## Build
 
 ```
-./build-push ${REPO:-amazeeiolagoon} ${TAG:-latest}
+./build-push ${TAG:-latest} ${REPO:-amazeeiolagoon}
 ```

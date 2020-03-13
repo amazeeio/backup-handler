@@ -1,5 +1,5 @@
 # build the binary
-FROM golang AS builder
+FROM golang:1.13.8 AS builder
 # bring in all the packages
 COPY main.go /go/src/github.com/amazeeio/lagoon/services/backuphandler/
 COPY go.mod /go/src/github.com/amazeeio/lagoon/services/backuphandler/
