@@ -15,5 +15,5 @@ GRAPHQL_ENDPOINT="http://localhost:3000/graphql"
 ## Build
 
 ```
-IMAGE_REPO=amazeeiolagoon; docker build --build-arg IMAGE_REPO=$IMAGE_REPO -t $IMAGE_REPO/backup-handler .
+./build-push ${REPO:-amazeeiolagoon} ${TAG:-latest}
 ```
