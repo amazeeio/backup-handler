@@ -15,7 +15,6 @@ import (
 
 // BackupInterface .
 type BackupInterface interface {
-	ProcessBackups(Backups, api.Environment) []Webhook
 	WebhookHandler(w http.ResponseWriter, r *http.Request)
 }
 
@@ -176,7 +175,7 @@ func (b *BackupHandler) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// if we get this far, then the payload data from the webhook should only have snapshots that are new or exist in the api
-			addBackups := b.ProcessBackups(backupData, backupsEnv)
+			addBackups := ProcessBackups(backupData, backupsEnv)
 			for _, backup := range addBackups {
 				b.addToMessageQueue(backup)
 			}
@@ -187,11 +186,11 @@ func (b *BackupHandler) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // ProcessBackups .
-func (b *BackupHandler) ProcessBackups(backupData Backups, backupsEnv api.Environment) []Webhook {
+func ProcessBackups(backupData Backups, backupsEnv api.Environment) []Webhook {
 	var addBackups []Webhook
 	for _, snapshotData := range backupData.Snapshots {
 		// we want to check that we match the name to the project/environment properly and capture any prebackuppods too
-		matched, _ := regexp.MatchString("^"+backupData.Name+"-.*-prebackuppod$|^"+backupData.Name+"$", snapshotData.Hostname)
+		matched, _ := regexp.MatchString("^"+backupData.Name+"-mariadb$|^"+backupData.Name+"-.*-prebackuppod$|^"+backupData.Name+"$", snapshotData.Hostname)
 		if matched {
 			// if the snapshot id is not in already in the api, then we want to add this backup to the webhooks queue
 			// this results in far less messages being sent to the queue as only new snapshots will be added

@@ -3,10 +3,7 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
-	"io"
 	"io/ioutil"
-	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -52,35 +49,35 @@ func TestProcessBackups(t *testing.T) {
 	// 	return
 	// }
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			t.Error(err.Error())
-			return
-		}
-		io.WriteString(w, `{
-			"data": {
-				"allBackups": ""
-			}
-		}`)
-	}))
-	defer srv.Close()
+	// srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// 	_, err := ioutil.ReadAll(r.Body)
+	// 	if err != nil {
+	// 		t.Error(err.Error())
+	// 		return
+	// 	}
+	// 	io.WriteString(w, `{
+	// 		"data": {
+	// 			"allBackups": ""
+	// 		}
+	// 	}`)
+	// }))
+	// defer srv.Close()
 
-	broker := RabbitBroker{
-		Hostname:     "127.0.0.1",
-		Port:         "35672",
-		QueueName:    "lagoon-webhooks:queue",
-		ExchangeName: "lagoon-webhooks",
-	}
-	graphQL := GraphQLEndpoint{
-		Endpoint:        srv.URL,
-		TokenSigningKey: "secret-key",
-		JWTAudience:     "api.dev",
-	}
-	backupHandler, err := NewBackupHandler(broker, graphQL)
-	if err != nil {
-		t.Errorf("unable to create backuphandler, error is %s:", err)
-	}
+	// broker := RabbitBroker{
+	// 	Hostname:     "127.0.0.1",
+	// 	Port:         "35672",
+	// 	QueueName:    "lagoon-webhooks:queue",
+	// 	ExchangeName: "lagoon-webhooks",
+	// }
+	// graphQL := GraphQLEndpoint{
+	// 	Endpoint:        srv.URL,
+	// 	TokenSigningKey: "secret-key",
+	// 	JWTAudience:     "api.dev",
+	// }
+	// backupHandler, err := NewBackupHandler(broker, graphQL)
+	// if err != nil {
+	// 	t.Errorf("unable to create backuphandler, error is %s:", err)
+	// }
 
 	var backupData Backups
 	jsonBackupTestData, err := ioutil.ReadFile("testdata/example-com.json")
@@ -97,7 +94,7 @@ func TestProcessBackups(t *testing.T) {
 		t.Errorf("unable to decode json, error is %s:", err.Error())
 	}
 	var backupsEnv api.Environment
-	addBackups := backupHandler.ProcessBackups(backupData, backupsEnv)
+	addBackups := ProcessBackups(backupData, backupsEnv)
 	var backupResult []string
 	for _, backup := range addBackups {
 		backupResult = append(backupResult, backup.Body.Snapshots[0].Hostname)

@@ -8,7 +8,7 @@ COPY internal /go/src/github.com/amazeeio/lagoon/services/backuphandler/internal
 WORKDIR /go/src/github.com/amazeeio/lagoon/services/backuphandler/
 
 # tests currently don't work because mocking rabbit is interesting
-# RUN GO111MODULE=on go test ./...
+RUN GO111MODULE=on go test ./...
 # compile
 RUN CGO_ENABLED=0  GOOS=linux GOARCH=amd64 go build -a -o backuphandler .
 
