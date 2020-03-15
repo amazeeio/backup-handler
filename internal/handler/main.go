@@ -180,7 +180,11 @@ func (b *BackupHandler) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 				b.addToMessageQueue(backup)
 			}
 		} else {
-			log.Printf("unable to handle webhook: %v: number of snapshots is nil or restorelocation is is empty", backupData)
+			backupJSON, err := json.Marshal(backupData)
+			if err != nil {
+				log.Printf("unable to handle webhook, error is: %v", err)
+			}
+			log.Printf("unable to handle webhook, data is: %v", string(backupJSON))
 		}
 	}
 }
