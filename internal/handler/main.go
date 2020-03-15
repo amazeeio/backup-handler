@@ -122,12 +122,12 @@ func (b *BackupHandler) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&backupData)
 	if err != nil {
-		log.Printf("unable to handle webhook, error is %s:", err.Error())
+		log.Printf("unable to decode json data from webhook, error is %s:", err.Error())
 	} else {
 		// get backups from the API
 		lagoonAPI, err := api.New(b.Endpoint.TokenSigningKey, b.Endpoint.JWTAudience, b.Endpoint.Endpoint)
 		if err != nil {
-			log.Printf("unable to handle webhook, error is %s:", err.Error())
+			log.Printf("unable to connect api, error is %s:", err.Error())
 			return
 		}
 
@@ -180,7 +180,7 @@ func (b *BackupHandler) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 				b.addToMessageQueue(backup)
 			}
 		} else {
-			log.Printf("unable to handle webhook: %v", backupData)
+			log.Printf("unable to handle webhook: %v: number of snapshots is nil or restorelocation is is empty", backupData)
 		}
 	}
 }
