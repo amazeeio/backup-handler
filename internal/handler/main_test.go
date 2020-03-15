@@ -3,8 +3,10 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"io/ioutil"
-	"os"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -24,23 +26,62 @@ func checkEqual(t *testing.T, got, want interface{}, msgs ...interface{}) {
 }
 
 func TestProcessBackups(t *testing.T) {
+	// // mock amqp
+	// mockServer := server.NewServer("amqp://127.0.0.1:35672/%2f")
+	// if mockServer == nil {
+	// 	t.Errorf("Failed to instantiate fake server")
+	// 	return
+	// }
+	// err := mockServer.Start()
+	// if err != nil {
+	// 	t.Errorf("Failed to start fake server")
+	// 	return
+	// }
+	// mockConn, err := amqptest.Dial("amqp://127.0.0.1:35672/%2f") // now it works =D
+	// if err != nil {
+	// 	t.Error(err)
+	// 	return
+	// }
+	// if mockConn == nil {
+	// 	t.Error("Invalid mockConn")
+	// 	return
+	// }
+	// mockChannel, err := mockConn.Channel()
+	// if err != nil {
+	// 	t.Error(err)
+	// 	return
+	// }
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			t.Error(err.Error())
+			return
+		}
+		io.WriteString(w, `{
+			"data": {
+				"allBackups": ""
+			}
+		}`)
+	}))
+	defer srv.Close()
+
 	broker := RabbitBroker{
-		Hostname:     os.Getenv("BROKER_ADDRESS"),
-		Username:     os.Getenv("BROKER_USER"),
-		Password:     os.Getenv("BROKER_PASS"),
-		Port:         os.Getenv("BROKER_PORT"),
+		Hostname:     "127.0.0.1",
+		Port:         "35672",
 		QueueName:    "lagoon-webhooks:queue",
 		ExchangeName: "lagoon-webhooks",
 	}
 	graphQL := GraphQLEndpoint{
-		Endpoint:        os.Getenv("GRAPHQL_ENDPOINT"),
-		TokenSigningKey: os.Getenv("JWT_SECRET"),
-		JWTAudience:     os.Getenv("JWT_AUDIENCE"),
+		Endpoint:        srv.URL,
+		TokenSigningKey: "secret-key",
+		JWTAudience:     "api.dev",
 	}
 	backupHandler, err := NewBackupHandler(broker, graphQL)
 	if err != nil {
 		t.Errorf("unable to create backuphandler, error is %s:", err)
 	}
+
 	var backupData Backups
 	jsonBackupTestData, err := ioutil.ReadFile("testdata/example-com.json")
 	if err != nil {

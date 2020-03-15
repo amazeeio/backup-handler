@@ -32,8 +32,8 @@ type BackupHandler struct {
 type RabbitBroker struct {
 	Hostname     string `json:"hostname"`
 	Port         string `json:"port"`
-	Username     string `json:"username"`
-	Password     string `json:"password"`
+	Username     string `json:"username,omitempty"`
+	Password     string `json:"password,omitempty"`
 	QueueName    string `json:"queueName"`
 	ExchangeName string `json:"exchangeName"`
 }
@@ -47,7 +47,11 @@ type GraphQLEndpoint struct {
 
 // NewBackupHandler .
 func NewBackupHandler(broker RabbitBroker, graphql GraphQLEndpoint) (BackupInterface, error) {
-	amqpURI := fmt.Sprintf("amqp://%s:%s@%s:%s", broker.Username, broker.Password, broker.Hostname, broker.Port)
+	var amqpURI string
+	amqpURI = fmt.Sprintf("amqp://%s:%s@%s:%s", broker.Username, broker.Password, broker.Hostname, broker.Port)
+	if broker.Username == "" && broker.Password == "" {
+		amqpURI = fmt.Sprintf("amqp://%s:%s", broker.Hostname, broker.Port)
+	}
 
 	newBackupHandler := &BackupHandler{
 		Broker:   broker,

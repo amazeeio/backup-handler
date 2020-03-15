@@ -46,6 +46,7 @@ func main() {
 		httpListenPort = "3000"
 	}
 
+	// configure the backup handler settings
 	broker := handler.RabbitBroker{
 		Hostname:     os.Getenv("BROKER_ADDRESS"),
 		Username:     os.Getenv("BROKER_USER"),
@@ -59,11 +60,14 @@ func main() {
 		TokenSigningKey: os.Getenv("JWT_SECRET"),
 		JWTAudience:     os.Getenv("JWT_AUDIENCE"),
 	}
+
+	// set up the backup handler
 	backupHandler, err := handler.NewBackupHandler(broker, graphQL)
 	if err != nil {
 		panic(err)
 	}
-	// handle the requests
+
+	// handle the webhook requests
 	http.HandleFunc("/", backupHandler.WebhookHandler)
 	http.ListenAndServe(":"+httpListenPort, nil)
 }

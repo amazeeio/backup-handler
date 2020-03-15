@@ -4,12 +4,13 @@ FROM golang:1.13.8 AS builder
 COPY main.go /go/src/github.com/amazeeio/lagoon/services/backuphandler/
 COPY go.mod /go/src/github.com/amazeeio/lagoon/services/backuphandler/
 COPY go.sum /go/src/github.com/amazeeio/lagoon/services/backuphandler/
+COPY internal /go/src/github.com/amazeeio/lagoon/services/backuphandler/internal/
 WORKDIR /go/src/github.com/amazeeio/lagoon/services/backuphandler/
 
-# get any imports as required
-RUN set -x && go get -v .
+# tests currently don't work because mocking rabbit is interesting
+# RUN GO111MODULE=on go test ./...
 # compile
-RUN CGO_ENABLED=0 GO111MODULE=on GOOS=linux GOARCH=amd64 go build -a -o backuphandler .
+RUN CGO_ENABLED=0  GOOS=linux GOARCH=amd64 go build -a -o backuphandler .
 
 # put the binary into container
 # use the commons image
